@@ -10,7 +10,7 @@ class Anova:
     1. Array must be distributed normally (You can test it with normality test eg. Shapiro-Wilk)
     2. Array is homogen (You can test it with homogeneity test eg. Bartlett test)
     """
-    def __init__(self, array):
+    def __init__(self, array, block=False):
         """
         Initial method contain array, total all values of array, size of array, \
         and number of repeat of treatment(it's r)
@@ -20,13 +20,23 @@ class Anova:
         self.array = array
         self.all_sum = array.sum()
         self.array_size = array.size
-        self.r = len(array[0])
+        self.treatment, self.r = array.shape # r represent for repeats or blocks
+        self.block = block # value is either True or False
 
     def db_index(self):
-        """ return (db_treatment, db_total, db_error)"""
+        """ return (db_treatment, db_total, db_error)
+        if block=True, return (db_block, db_treatment, db_total, db_error)"""
         db_treatment = len(self.array) - 1
         db_total = self.array_size - 1
-        db_error = db_total - db_treatment
+        if self.block:
+            db_block = self.r - 1
+        else:
+            db_block = 0
+
+        db_error = db_total - db_treatment - db_block
+
+        if self.block:
+            return (db_treatment, db_total, db_error, db_block)
 
         return (db_treatment, db_total, db_error)
 
@@ -42,6 +52,20 @@ class Anova:
         """
         return round(((self.array ** 2).sum() - self.square_factor()), 2)
 
+    def sum_square_block(self):
+        """
+        return sum square of blocks if the block=True
+        """
+        # transpose array
+        if self.block:
+            transpose_arr = self.array.T
+            sum_blocks = transpose_arr.sum(axis=1)
+            sum_square = round(((sum_blocks ** 2).sum() / self.treatment) - self.square_factor(), 2)
+            
+            return sum_square
+
+        return "Your data is not set to block design, it maybe set to complete design"
+        
     def sum_square_treatment(self):
         """
         return sum square of treatments
@@ -59,7 +83,20 @@ class Anova:
         """
         return sum square of error
         """
+        if self.block:
+            return round(self.sum_square_total() - self.sum_square_block() - self.sum_square_treatment(), 2)
+
         return self.sum_square_total() - self.sum_square_treatment()
+
+    def mid_square_block(self):
+        """
+        return middle square of sum_square_block()
+        """
+        if self.block:
+            mid_square_block_ = round(self.sum_square_block() / self.db_index()[3], 2)
+            return mid_square_block_
+        else:
+            return "Your data is not set to block design, it maybe set to complete design"
 
     def mid_square_treatment(self):
         """
@@ -78,36 +115,63 @@ class Anova:
         """
         return F calculated of array
         """
-        return round(self.mid_square_treatment() / self.mid_square_error(), 2)
+        f_calc_treatment = round(self.mid_square_treatment() / self.mid_square_error(), 2)
+        if self.block:
+            f_calc_block = round(self.mid_square_block() / self.mid_square_error(), 2)
+            return (f_calc_treatment, f_calc_block)
+        return (f_calc_treatment,)
 
     def f_95_table(self):
         """
         generate F table with 95% accuracy
         """
-        f_95 = round(f.ppf(0.95, self.db_index()[0], self.db_index()[2]), 2)
-        return f_95
+        f_95_treatment = round(f.ppf(0.95, self.db_index()[0], self.db_index()[2]), 2)
+        if self.block:
+            f_95_block = round(f.ppf(0.95, self.db_index()[3], self.db_index()[2]), 2)
+            return (f_95_treatment, f_95_block)
+        return (f_95_treatment,)
 
     def f_99_table(self):
         """
         generate F table with 99% accuracy
         """
-        f_99 = round(f.ppf(0.99, self.db_index()[0], self.db_index()[2]), 2)
-        return f_99
-
+        f_99_treatment = round(f.ppf(0.99, self.db_index()[0], self.db_index()[2]), 2)
+        if self.block:
+            f_99_block = round(f.ppf(0.99, self.db_index()[3], self.db_index()[2]), 2)
+            return (f_99_treatment, f_99_block)
+        return (f_99_treatment,)
+        
     def anova_table(self):
         """
         generate anova table
         """
-        status = 'ns'
-        if self.f_calc() > self.f_99_table():
-            status = 'vs'
-        elif self.f_calc > self.f_95_table():
-            status = 's'
-        print("DB\tJK\tKT\tF Hitung\t F tabel")
-        print('\t\t\t\t\t5%\t1%')
-        print('{0}\t{1}\t{2}\t{3}{4}\t\t{5}\t{6}'.format(self.db_index()[0], self.sum_square_treatment(), self.mid_square_treatment(), self.f_calc(), status, self.f_95_table(), self.f_99_table()))
-        print('{0}\t{1}\t{2}'.format(self.db_index()[2], self.sum_square_error(), self.mid_square_error()))
-        print('{0}\t{1}'.format(self.db_index()[1], self.sum_square_total()))
+        status_treatment = 'ns'
+        if self.f_calc()[0] > self.f_99_table()[0]:
+            status_treatment = 'vs'
+        elif self.f_calc()[0] > self.f_95_table()[0]:
+            status_treatment = 's'
+
+        if self.block:
+            status_block = 'ns'
+            if self.f_calc()[1] > self.f_99_table()[1]:
+                status_block = 'vs'
+            elif self.f_calc()[1] > self.f_95_table()[1]:
+                status_block = 's'
+
+            print("SK\tDB\tJK\tKT\tF Hitung\t F tabel")
+            print('\t\t\t\t\t\t5%\t1%')
+            print('K\t{0}\t{1}\t{2}\t{3}{4}\t\t{5}\t{6}'.format(self.db_index()[3], self.sum_square_block(), self.mid_square_block(), self.f_calc()[1], status_block, self.f_95_table()[1], self.f_99_table()[1]))
+            print('T\t{0}\t{1}\t{2}\t{3}{4}\t\t{5}\t{6}'.format(self.db_index()[0], self.sum_square_treatment(), self.mid_square_treatment(), self.f_calc()[0], status_treatment, self.f_95_table()[0], self.f_99_table()[0]))
+            print('Galat\t{0}\t{1}\t{2}'.format(self.db_index()[2], self.sum_square_error(), self.mid_square_error()))
+            print('Total\t{0}\t{1}'.format(self.db_index()[1], self.sum_square_total()))
+
+        else:
+
+            print("SK\tDB\tJK\tKT\tF Hitung\t F tabel")
+            print('\t\t\t\t\t\t5%\t1%')
+            print('T\t{0}\t{1}\t{2}\t{3}{4}\t\t{5}\t{6}'.format(self.db_index()[0], self.sum_square_treatment(), self.mid_square_treatment(), self.f_calc()[0], status_treatment, self.f_95_table()[0], self.f_99_table()[0]))
+            print('Galat\t{0}\t{1}\t{2}'.format(self.db_index()[2], self.sum_square_error(), self.mid_square_error()))
+            print('Total\t{0}\t{1}'.format(self.db_index()[1], self.sum_square_total()))
 
 
 
